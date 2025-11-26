@@ -5,9 +5,6 @@ export * from './types/quiz';
 export { useQuiz } from './hooks/useQuiz';
 export { usePdfParser } from './hooks/usePdfParser';
 
-// Server Actions
-export { parsePdf, loadParsedQuestions, listParsedFiles } from './actions/pdfActions';
-
 // Quiz Logic utilities
 export {
   initializeQuizQuestions,

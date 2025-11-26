@@ -1,5 +1,6 @@
+'use client';
+
 import { useState, useCallback } from 'react';
-import { parsePdf, loadParsedQuestions, listParsedFiles } from '../actions/pdfActions';
 import { ParsedQuestion } from '../types/quiz';
 
 interface UsePdfParserReturn {
@@ -7,12 +8,9 @@ interface UsePdfParserReturn {
   parsedQuestions: ParsedQuestion[];
   isParsing: boolean;
   error: string | null;
-  savedFiles: string[];
   
   // Actions
   parseFromFile: (file: File) => Promise<ParsedQuestion[]>;
-  loadFromSaved: (fileName: string) => Promise<ParsedQuestion[]>;
-  refreshSavedFiles: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -20,7 +18,31 @@ export function usePdfParser(): UsePdfParserReturn {
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedFiles, setSavedFiles] = useState<string[]>([]);
+
+  // Extract text from PDF using pdfjs-dist (runs in browser only)
+  const extractTextFromPdf = async (file: File): Promise<string> => {
+    // Dynamic import to avoid SSR issues
+    const pdfjsLib = await import('pdfjs-dist');
+    
+    // Set the worker source for PDF.js - use unpkg CDN (has all npm versions)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    let fullText = '';
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item) => ('str' in item ? item.str : ''))
+        .join(' ');
+      fullText += pageText + '\n\n';
+    }
+    
+    return fullText;
+  };
 
   const parseFromFile = useCallback(async (file: File): Promise<ParsedQuestion[]> => {
     console.log('parseFromFile called with file:', file.name, 'size:', file.size);
@@ -28,29 +50,47 @@ export function usePdfParser(): UsePdfParserReturn {
     setError(null);
     
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      console.log('Calling parsePdf action');
-      const result = await parsePdf(formData);
-      console.log('parsePdf result:', result);
+      // Step 1: Extract text from PDF in the browser
+      console.log('Extracting text from PDF...');
+      const pdfText = await extractTextFromPdf(file);
+      console.log('PDF text extracted, length:', pdfText.length);
+      console.log('First 500 chars of PDF text:', pdfText.substring(0, 500));
       
-      if (result.error) {
-        console.error('parsePdf returned error:', result.error);
-        setError(result.error);
+      if (!pdfText || pdfText.trim().length === 0) {
+        setError('Could not extract text from PDF. The PDF might be image-based or empty.');
+        return [];
+      }
+      
+      // Step 2: Send text to API route for Gemini processing
+      console.log('Sending text to extract-questions API...');
+      const response = await fetch('/api/extract-questions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: pdfText,
+          fileName: file.name
+        }),
+      });
+      
+      const result = await response.json();
+      console.log('API response:', result);
+      
+      if (!response.ok) {
+        console.error('API error:', result.error);
+        setError(result.error || 'Failed to extract questions');
         return [];
       }
 
       if (!result.structuredQuestions || result.structuredQuestions.length === 0) {
-        console.error('No structured questions found. Result:', result);
-        console.error('PDF text length:', result.text?.length);
-        console.error('First 1000 chars of PDF text:', result.text?.substring(0, 1000));
+        console.error('No structured questions found in API response');
         setError('No questions found in the PDF');
         return [];
       }
 
       console.log('Setting parsed questions:', result.structuredQuestions.length);
       setParsedQuestions(result.structuredQuestions);
-      console.log('Parsed questions from PDF:', result.structuredQuestions.length);
       return result.structuredQuestions;
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to parse PDF';
@@ -62,43 +102,6 @@ export function usePdfParser(): UsePdfParserReturn {
     }
   }, []);
 
-  const loadFromSaved = useCallback(async (fileName: string): Promise<ParsedQuestion[]> => {
-    setIsParsing(true);
-    setError(null);
-    
-    try {
-      const result = await loadParsedQuestions(fileName);
-      
-      if (result.error) {
-        setError(result.error);
-        return [];
-      }
-
-      if (!result.structuredQuestions || result.structuredQuestions.length === 0) {
-        setError('No questions found in the saved file');
-        return [];
-      }
-
-      setParsedQuestions(result.structuredQuestions);
-      return result.structuredQuestions;
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'Failed to load questions';
-      setError(errorMessage);
-      return [];
-    } finally {
-      setIsParsing(false);
-    }
-  }, []);
-
-  const refreshSavedFiles = useCallback(async () => {
-    try {
-      const files = await listParsedFiles();
-      setSavedFiles(files);
-    } catch {
-      setSavedFiles([]);
-    }
-  }, []);
-
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -107,10 +110,7 @@ export function usePdfParser(): UsePdfParserReturn {
     parsedQuestions,
     isParsing,
     error,
-    savedFiles,
     parseFromFile,
-    loadFromSaved,
-    refreshSavedFiles,
     clearError
   };
 }
