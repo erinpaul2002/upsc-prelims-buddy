@@ -4,6 +4,9 @@ export function initializeQuizQuestions(
   parsedQuestions: ParsedQuestion[],
   maxQuestions?: number
 ): QuizQuestion[] {
+  console.log('initializeQuizQuestions called with:', parsedQuestions.length, 'questions');
+  console.log('Sample parsed question:', parsedQuestions[0]);
+  
   // Filter out invalid questions
   const validQuestions = parsedQuestions.filter(q => 
     q.question && 
@@ -15,6 +18,11 @@ export function initializeQuizQuestions(
   
   console.log('Total parsed questions:', parsedQuestions.length);
   console.log('Valid questions after filtering:', validQuestions.length);
+  console.log('Invalid questions filtered out:', parsedQuestions.length - validQuestions.length);
+
+  if (validQuestions.length === 0) {
+    console.error('No valid questions found after filtering. Parsed questions:', parsedQuestions);
+  }
 
   const numQuestions = maxQuestions 
     ? Math.min(maxQuestions, validQuestions.length) 

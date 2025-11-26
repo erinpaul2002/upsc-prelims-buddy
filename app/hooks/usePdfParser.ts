@@ -23,29 +23,38 @@ export function usePdfParser(): UsePdfParserReturn {
   const [savedFiles, setSavedFiles] = useState<string[]>([]);
 
   const parseFromFile = useCallback(async (file: File): Promise<ParsedQuestion[]> => {
+    console.log('parseFromFile called with file:', file.name, 'size:', file.size);
     setIsParsing(true);
     setError(null);
     
     try {
       const formData = new FormData();
       formData.append('file', file);
+      console.log('Calling parsePdf action');
       const result = await parsePdf(formData);
+      console.log('parsePdf result:', result);
       
       if (result.error) {
+        console.error('parsePdf returned error:', result.error);
         setError(result.error);
         return [];
       }
 
       if (!result.structuredQuestions || result.structuredQuestions.length === 0) {
+        console.error('No structured questions found. Result:', result);
+        console.error('PDF text length:', result.text?.length);
+        console.error('First 1000 chars of PDF text:', result.text?.substring(0, 1000));
         setError('No questions found in the PDF');
         return [];
       }
 
+      console.log('Setting parsed questions:', result.structuredQuestions.length);
       setParsedQuestions(result.structuredQuestions);
       console.log('Parsed questions from PDF:', result.structuredQuestions.length);
       return result.structuredQuestions;
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to parse PDF';
+      console.error('Error in parseFromFile:', e);
       setError(errorMessage);
       return [];
     } finally {

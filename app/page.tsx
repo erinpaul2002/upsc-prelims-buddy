@@ -51,13 +51,16 @@ export default function Home() {
       return;
     }
 
+    console.log('Starting quiz with PDF file:', pdfFile.name);
     const questions = await parseFromFile(pdfFile);
-    console.log('Parsed questions:', questions.length);
+    console.log('Questions returned from parseFromFile:', questions.length);
+    console.log('Questions array:', questions);
     
     if (questions.length > 0) {
       console.log('Starting quiz with', questions.length, 'questions');
       startQuiz(questions);
     } else {
+      console.error('No valid questions found. Questions array is empty or invalid');
       alert('No valid questions found in the PDF. Please check the PDF format.');
     }
   };

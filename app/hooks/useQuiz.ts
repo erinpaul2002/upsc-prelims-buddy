@@ -98,8 +98,13 @@ export function useQuiz({ totalTime, maxQuestions }: UseQuizOptions): UseQuizRet
   }, [isStarted, finishQuiz]);
 
   const startQuiz = useCallback((parsedQuestions: ParsedQuestion[]) => {
+    console.log('startQuiz called with parsedQuestions:', parsedQuestions.length);
+    console.log('Sample parsed question in startQuiz:', parsedQuestions[0]);
+    
     const quizQuestions = initializeQuizQuestions(parsedQuestions, maxQuestions);
     console.log('Initialized quiz questions:', quizQuestions.length);
+    console.log('First quiz question:', quizQuestions[0]);
+    
     setQuestions(quizQuestions);
     setRoundQuestions(quizQuestions.map(q => q.id));
     console.log('Round questions:', quizQuestions.map(q => q.id));
