@@ -1,3 +1,6 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import Card from './Card';
 
 interface QuestionCardProps {
@@ -15,6 +18,27 @@ export default function QuestionCard({
   answerQuestion,
   skipQuestion
 }: QuestionCardProps) {
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedOption(null);
+  }, [currentQuestionIndex, currentRound]);
+
+  const handleOptionClick = (option: string) => {
+    setSelectedOption(option);
+    setTimeout(() => {
+      answerQuestion(option);
+    }, 300);
+  };
+
+  const getButtonClass = (option: string) => {
+    const baseClass = "p-6 rounded-lg text-2xl font-bold transition-colors border border-gray-300";
+    if (selectedOption === option) {
+      return `${baseClass} bg-orange-500 text-white border-orange-600`;
+    }
+    return `${baseClass} bg-white text-black hover:bg-gray-100 active:bg-gray-200`;
+  };
+
   return (
     <Card
       top={
@@ -27,37 +51,24 @@ export default function QuestionCard({
         <>
           <div className="text-xl font-semibold text-orange-500 mb-4">Round {currentRound}</div>
           <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => answerQuestion('A')}
-              className="bg-white text-black p-6 rounded-lg text-2xl font-bold hover:bg-gray-100 active:bg-gray-200 transition-colors border border-gray-300"
-            >
-              A
-            </button>
-            <button
-              onClick={() => answerQuestion('B')}
-              className="bg-white text-black p-6 rounded-lg text-2xl font-bold hover:bg-gray-100 active:bg-gray-200 transition-colors border border-gray-300"
-            >
-              B
-            </button>
-            <button
-              onClick={() => answerQuestion('C')}
-              className="bg-white text-black p-6 rounded-lg text-2xl font-bold hover:bg-gray-100 active:bg-gray-200 transition-colors border border-gray-300"
-            >
-              C
-            </button>
-            <button
-              onClick={() => answerQuestion('D')}
-              className="bg-white text-black p-6 rounded-lg text-2xl font-bold hover:bg-gray-100 active:bg-gray-200 transition-colors border border-gray-300"
-            >
-              D
-            </button>
+            {['A', 'B', 'C', 'D'].map((option) => (
+              <button
+                key={option}
+                onClick={() => handleOptionClick(option)}
+                disabled={selectedOption !== null}
+                className={getButtonClass(option)}
+              >
+                {option}
+              </button>
+            ))}
           </div>
         </>
       }
       bottom={
         <button
           onClick={skipQuestion}
-          className="w-full bg-orange-500 text-white p-4 rounded-lg text-xl font-bold hover:bg-orange-600 active:bg-orange-700 transition-colors border border-orange-600"
+          disabled={selectedOption !== null}
+          className="w-full bg-orange-500 text-white p-4 rounded-lg text-xl font-bold hover:bg-orange-600 active:bg-orange-700 transition-colors border border-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Skip Question
         </button>
