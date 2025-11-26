@@ -19,13 +19,13 @@ export function usePdfParser(): UsePdfParserReturn {
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Extract text from PDF using pdfjs-dist (runs in browser only)
+  // Extract text from PDF using pdfjs-dist legacy build (better mobile compatibility)
   const extractTextFromPdf = async (file: File): Promise<string> => {
-    // Dynamic import to avoid SSR issues
-    const pdfjsLib = await import('pdfjs-dist');
+    // Dynamic import legacy build for better browser compatibility
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
     
-    // Set the worker source for PDF.js - use unpkg CDN (has all npm versions)
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    // Use legacy worker from CDN with .js extension for mobile compatibility
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/legacy/build/pdf.worker.min.mjs`;
     
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
