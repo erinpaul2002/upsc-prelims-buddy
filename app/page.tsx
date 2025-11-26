@@ -494,13 +494,13 @@ export default function Home() {
               {/* Unattempted */}
               <div>
                 <h3 className="text-xl font-semibold mb-3 text-gray-400 border-b border-gray-400 pb-2">
-                  Unattempted ({questions.filter(q => !q.roundAttempts?.length && !q.skipped).length} questions)
+                  Unattempted ({questions.filter(q => q.answeredRound === null).length} questions)
                 </h3>
                 <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                  {questions.filter(q => !q.roundAttempts?.length && !q.skipped).length === 0 ? (
+                  {questions.filter(q => q.answeredRound === null).length === 0 ? (
                     <p className="text-gray-400 italic">All questions were attempted!</p>
                   ) : (
-                    questions.filter(q => !q.roundAttempts?.length && !q.skipped).map(q => (
+                    questions.filter(q => q.answeredRound === null).map(q => (
                       <div key={q.id} className="bg-gray-800 p-4 rounded-lg border border-gray-600">
                         <div className="flex justify-between items-start mb-3">
                           <span className="text-lg font-bold text-white">Q{q.id}</span>
