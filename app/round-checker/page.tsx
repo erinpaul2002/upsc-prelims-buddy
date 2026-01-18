@@ -2,7 +2,12 @@
 
 import { useState } from 'react';
 
-type RoundSelections = Record<number, string>; // questionId -> selected option
+type RoundSelection = {
+  round: number | 'skip';
+  option: string | null;
+};
+
+type RoundSelections = Record<number, RoundSelection>; // questionId -> {round, option}
 type Answers = Record<number, string>; // questionId -> correct option
 
 // Classification categories
@@ -79,33 +84,44 @@ const getCategoryInfo = (category: QuestionCategory): QuestionAnalysis => {
 
 export default function RoundChecker() {
   const [numQuestions, setNumQuestions] = useState<number>(5);
-  const [currentStep, setCurrentStep] = useState<'setup' | 'rounds' | 'answers' | 'analysis'>('setup');
-  const [currentRound, setCurrentRound] = useState<number>(1);
-  const [roundSelections, setRoundSelections] = useState<RoundSelections[]>([{}, {}, {}]); // index 0: round1, etc.
+  const [currentStep, setCurrentStep] = useState<'setup' | 'selectRounds' | 'answers' | 'analysis'>('setup');
+  const [roundSelections, setRoundSelections] = useState<RoundSelections>({});
   const [answers, setAnswers] = useState<Answers>({});
   const [tempAnswers, setTempAnswers] = useState<Answers>({});
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    metrics: true,
+    breakdown: true,
+    questions: true,
+    insights: true
+  });
 
   const handleStartRounds = () => {
-    setCurrentStep('rounds');
-    setCurrentRound(1);
-  };
-
-  const handleRoundSelection = (questionId: number, option: string) => {
-    setRoundSelections(prev => {
-      const newSelections = [...prev];
-      newSelections[currentRound - 1] = { ...newSelections[currentRound - 1], [questionId]: option };
-      return newSelections;
-    });
-  };
-
-  const handleNextRound = () => {
-    if (currentRound < 3) {
-      setCurrentRound(prev => prev + 1);
-    } else {
-      // Move to answers
-      setCurrentStep('answers');
-      setTempAnswers({ ...answers });
+    // Initialize round selections
+    const initialSelections: RoundSelections = {};
+    for (let i = 1; i <= numQuestions; i++) {
+      initialSelections[i] = { round: 'skip', option: null };
     }
+    setRoundSelections(initialSelections);
+    setCurrentStep('selectRounds');
+  };
+
+  const handleRoundSelection = (questionId: number, round: number | 'skip') => {
+    setRoundSelections(prev => ({
+      ...prev,
+      [questionId]: { round, option: round === 'skip' ? null : prev[questionId]?.option || null }
+    }));
+  };
+
+  const handleOptionSelection = (questionId: number, option: string) => {
+    setRoundSelections(prev => ({
+      ...prev,
+      [questionId]: { ...prev[questionId], option }
+    }));
+  };
+
+  const handleProceedToAnswers = () => {
+    setCurrentStep('answers');
+    setTempAnswers({ ...answers });
   };
 
   const handleAnswerChange = (questionId: number, option: string) => {
@@ -117,55 +133,53 @@ export default function RoundChecker() {
     setCurrentStep('analysis');
   };
 
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
   // Classify each question based on algorithm
   const classifyQuestion = (questionId: number): QuestionCategory => {
     const correctAnswer = answers[questionId];
-    let firstAttemptRound = -1;
-    let finalAnswer = null;
-
-    // Find first attempt round
-    for (let i = 0; i < 3; i++) {
-      if (roundSelections[i][questionId]) {
-        firstAttemptRound = i + 1;
-        finalAnswer = roundSelections[i][questionId];
-        break;
-      }
-    }
+    const roundSelection = roundSelections[questionId];
 
     // A1: Skipped completely
-    if (firstAttemptRound === -1) {
+    if (!roundSelection || roundSelection.round === 'skip') {
       return 'A1';
     }
 
-    const isCorrect = finalAnswer === correctAnswer;
+    const givenAnswer = roundSelection.option;
+    const isCorrect = givenAnswer === correctAnswer;
 
     // B1: Wrong in Round 1
-    if (firstAttemptRound === 1 && !isCorrect) {
+    if (roundSelection.round === 1 && !isCorrect) {
       return 'B1';
     }
 
     // C1: Correct in Round 1
-    if (firstAttemptRound === 1 && isCorrect) {
+    if (roundSelection.round === 1 && isCorrect) {
       return 'C1';
     }
 
     // D1: Correct in Round 2
-    if (firstAttemptRound === 2 && isCorrect) {
+    if (roundSelection.round === 2 && isCorrect) {
       return 'D1';
     }
 
     // D2: Wrong in Round 2
-    if (firstAttemptRound === 2 && !isCorrect) {
+    if (roundSelection.round === 2 && !isCorrect) {
       return 'D2';
     }
 
     // E1: Correct in Round 3
-    if (firstAttemptRound === 3 && isCorrect) {
+    if (roundSelection.round === 3 && isCorrect) {
       return 'E1';
     }
 
     // E2: Wrong in Round 3
-    if (firstAttemptRound === 3 && !isCorrect) {
+    if (roundSelection.round === 3 && !isCorrect) {
       return 'E2';
     }
 
@@ -204,13 +218,6 @@ export default function RoundChecker() {
     if (isAnswerMode) {
       return tempAnswers[questionId] === option ? `${baseClass} bg-blue-500 text-white border-blue-600` : `${baseClass} bg-gray-700 text-white border-gray-500 hover:bg-gray-600`;
     }
-    // For rounds
-    const attemptedInPrevious = roundSelections.slice(0, currentRound - 1).some(sel => sel[questionId]);
-    if (attemptedInPrevious) {
-      return `${baseClass} bg-gray-400 text-gray-600 border-gray-400 cursor-not-allowed`;
-    }
-    const selectedInCurrent = roundSelections[currentRound - 1][questionId] === option;
-    if (selectedInCurrent) return `${baseClass} bg-orange-500 text-white border-orange-600`;
     return `${baseClass} bg-gray-700 text-white border-gray-500 hover:bg-gray-600`;
   };
 
@@ -241,33 +248,56 @@ export default function RoundChecker() {
 
   const renderRounds = () => (
     <div className="min-h-screen bg-black text-white p-4">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6 text-center text-orange-500">Round {currentRound}</h1>
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-          {Array.from({ length: numQuestions }, (_, i) => i + 1).map(questionId => (
-            <div key={questionId} className={`bg-gray-900 p-4 rounded-lg border border-gray-700 flex items-center ${roundSelections.slice(0, currentRound - 1).some(sel => sel[questionId]) ? 'opacity-50 line-through' : ''}`}>
-              <span className="text-lg font-semibold text-white mr-6 w-24">Q{questionId}</span>
-              <div className="flex space-x-4">
-                {['A', 'B', 'C', 'D'].map(option => (
-                  <button
-                    key={option}
-                    onClick={() => handleRoundSelection(questionId, option)}
-                    disabled={roundSelections.slice(0, currentRound - 1).some(sel => sel[questionId])}
-                    className={getOptionClass(questionId, option)}
-                  >
-                    {option}
-                  </button>
-                ))}
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-2xl md:text-3xl font-bold mb-6 text-center text-orange-500">Select Round for Each Question</h1>
+        <div className="space-y-3 max-h-[70vh] overflow-y-auto">
+          {Array.from({ length: numQuestions }, (_, i) => i + 1).map(questionId => {
+            const isSkipped = roundSelections[questionId]?.round === 'skip';
+            return (
+              <div key={questionId} className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <span className="text-lg font-semibold text-white">Q{questionId}</span>
+                  <div className="flex-1 sm:flex-none">
+                    <select
+                      value={roundSelections[questionId]?.round === 'skip' ? 'skip' : roundSelections[questionId]?.round || 'skip'}
+                      onChange={(e) => handleRoundSelection(questionId, e.target.value === 'skip' ? 'skip' : parseInt(e.target.value))}
+                      className="w-full sm:w-48 px-3 py-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:border-orange-500 focus:outline-none transition-colors"
+                    >
+                      <option value="skip">Skip</option>
+                      <option value="1">Round 1</option>
+                      <option value="2">Round 2</option>
+                      <option value="3">Round 3</option>
+                    </select>
+                  </div>
+                </div>
+                {!isSkipped && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="text-xs text-gray-400 w-full">Select your answer:</span>
+                    {['A', 'B', 'C', 'D'].map(option => (
+                      <button
+                        key={option}
+                        onClick={() => handleOptionSelection(questionId, option)}
+                        className={`flex-1 sm:flex-none w-12 h-12 rounded-full border-2 flex items-center justify-center text-lg font-semibold transition-colors ${
+                          roundSelections[questionId]?.option === option
+                            ? 'bg-blue-500 text-white border-blue-600'
+                            : 'bg-gray-700 text-white border-gray-500 hover:bg-gray-600'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="mt-6 text-center">
           <button
-            onClick={handleNextRound}
-            className="bg-orange-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-600 transition-colors"
+            onClick={handleProceedToAnswers}
+            className="w-full sm:w-auto bg-orange-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-600 transition-colors"
           >
-            {currentRound < 3 ? `Finish Round ${currentRound}` : 'Proceed to Answers'}
+            Proceed to Answers
           </button>
         </div>
       </div>
@@ -279,22 +309,37 @@ export default function RoundChecker() {
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6 text-center text-orange-500">Enter Correct Answers</h1>
         <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-          {Array.from({ length: numQuestions }, (_, i) => i + 1).map(questionId => (
-            <div key={questionId} className="bg-gray-900 p-4 rounded-lg border border-gray-700 flex items-center">
-              <span className="text-lg font-semibold text-white mr-6 w-24">Q{questionId}</span>
-              <div className="flex space-x-4">
-                {['A', 'B', 'C', 'D'].map(option => (
-                  <button
-                    key={option}
-                    onClick={() => handleAnswerChange(questionId, option)}
-                    className={getOptionClass(questionId, option, true)}
-                  >
-                    {option}
-                  </button>
-                ))}
+          {Array.from({ length: numQuestions }, (_, i) => i + 1).map(questionId => {
+            const isSkipped = roundSelections[questionId]?.round === 'skip';
+            return (
+              <div key={questionId} className="bg-gray-900 p-4 rounded-lg border border-gray-700 flex items-center">
+                <div className="flex-1">
+                  <span className="text-lg font-semibold text-white mr-6">Q{questionId}</span>
+                  <span className="text-sm text-gray-400">
+                    {isSkipped ? '(Skipped)' : `Round ${roundSelections[questionId]?.round} - Selected: ${roundSelections[questionId]?.option}`}
+                  </span>
+                </div>
+                <div className="flex space-x-4">
+                  {['A', 'B', 'C', 'D'].map(option => (
+                    <button
+                      key={option}
+                      onClick={() => !isSkipped && handleAnswerChange(questionId, option)}
+                      disabled={isSkipped}
+                      className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-lg font-semibold transition-colors ${
+                        isSkipped
+                          ? 'bg-gray-600 text-gray-400 border-gray-500 cursor-not-allowed'
+                          : tempAnswers[questionId] === option
+                          ? 'bg-blue-500 text-white border-blue-600'
+                          : 'bg-gray-700 text-white border-gray-500 hover:bg-gray-600'
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="mt-6 text-center">
           <button
@@ -333,24 +378,18 @@ export default function RoundChecker() {
 
     const getOptionClassAnalysis = (questionId: number, option: string) => {
       const baseClass = "w-12 h-12 rounded-full border-2 flex items-center justify-center text-lg font-semibold";
-      let finalAnswer = null;
-      for (let i = 2; i >= 0; i--) {
-        if (roundSelections[i][questionId]) {
-          finalAnswer = roundSelections[i][questionId];
-          break;
-        }
-      }
       const correctAnswer = answers[questionId];
       const category = classifyQuestion(questionId);
+      const selectedOption = roundSelections[questionId]?.option;
 
       if (category === 'A1') {
         return option === correctAnswer ? `${baseClass} bg-green-500 text-white border-green-600` : `${baseClass} bg-gray-600 text-gray-400 border-gray-500`;
       }
       if (['C1', 'D1', 'E1'].includes(category)) {
-        return option === finalAnswer ? `${baseClass} bg-green-500 text-white border-green-600` : `${baseClass} bg-gray-600 text-gray-400 border-gray-500`;
+        return option === selectedOption ? `${baseClass} bg-green-500 text-white border-green-600` : `${baseClass} bg-gray-600 text-gray-400 border-gray-500`;
       }
       // Wrong categories (B1, D2, E2)
-      if (option === finalAnswer) return `${baseClass} bg-red-500 text-white border-red-600`;
+      if (option === selectedOption) return `${baseClass} bg-red-500 text-white border-red-600`;
       if (option === correctAnswer) return `${baseClass} bg-green-500 text-white border-green-600`;
       return `${baseClass} bg-gray-600 text-gray-400 border-gray-500`;
     };
@@ -360,10 +399,87 @@ export default function RoundChecker() {
         <div className="max-w-6xl mx-auto">
           <h1 className="text-3xl font-bold mb-6 text-center text-orange-500">UPSC Prelims Analysis</h1>
 
+          {/* Score Summary Card */}
+          <div className="bg-gray-900 p-6 rounded-lg border border-gray-700 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-orange-400">Score Summary</h2>
+              <button
+                onClick={() => toggleSection('summary')}
+                className="text-gray-400 hover:text-orange-400 transition-colors"
+              >
+                {expandedSections['summary'] !== false ? '−' : '+'}
+              </button>
+            </div>
+            {expandedSections['summary'] !== false && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[1, 2, 3].map(round => {
+                  const roundQuestions = Array.from({ length: numQuestions }, (_, i) => i + 1)
+                    .filter(q => roundSelections[q]?.round === round);
+                  const attempted = roundQuestions.length;
+                  const hits = roundQuestions.filter(q => {
+                    const selection = roundSelections[q];
+                    return selection?.option === answers[q];
+                  }).length;
+                  const misses = attempted - hits;
+
+                  return (
+                    <div key={round} className="bg-gray-800 p-4 rounded-lg border border-gray-600">
+                      <h3 className="text-lg font-semibold text-white mb-3">Round {round}</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Attempted:</span>
+                          <span className="text-white font-semibold">{attempted}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-400">Hit:</span>
+                          <span className="text-green-400 font-semibold">{hits}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-red-400">Miss:</span>
+                          <span className="text-red-400 font-semibold">{misses}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="bg-gray-800 p-4 rounded-lg border border-gray-600 md:col-span-2">
+                  <h3 className="text-lg font-semibold text-white mb-3">Overall</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                    <div>
+                      <span className="text-gray-400 block text-xs">Attempted</span>
+                      <span className="text-white font-semibold text-lg">{numQuestions - (classifications.filter(c => c === 'A1').length)}</span>
+                    </div>
+                    <div>
+                      <span className="text-green-400 block text-xs">Hit</span>
+                      <span className="text-green-400 font-semibold text-lg">{classifications.filter(c => ['C1', 'D1', 'E1'].includes(c)).length}</span>
+                    </div>
+                    <div>
+                      <span className="text-red-400 block text-xs">Miss</span>
+                      <span className="text-red-400 font-semibold text-lg">{classifications.filter(c => ['B1', 'D2', 'E2'].includes(c)).length}</span>
+                    </div>
+                    <div>
+                      <span className="text-blue-400 block text-xs">Skip</span>
+                      <span className="text-blue-400 font-semibold text-lg">{classifications.filter(c => c === 'A1').length}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Aggregate Metrics */}
           <div className="bg-gray-900 p-6 rounded-lg border border-gray-700 mb-6">
-            <h2 className="text-2xl font-semibold mb-4 text-orange-400">Performance Metrics</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-orange-400">Performance Metrics</h2>
+              <button
+                onClick={() => toggleSection('metrics')}
+                className="text-gray-400 hover:text-orange-400 transition-colors"
+              >
+                {expandedSections['metrics'] ? '−' : '+'}
+              </button>
+            </div>
+            {expandedSections['metrics'] && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-gray-800 p-4 rounded-lg border border-gray-600">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium">Content Gap Index</span>
@@ -410,12 +526,22 @@ export default function RoundChecker() {
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           {/* Category Breakdown */}
           <div className="bg-gray-900 p-6 rounded-lg border border-gray-700 mb-6">
-            <h2 className="text-2xl font-semibold mb-4 text-orange-400">Category Breakdown</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-orange-400">Category Breakdown</h2>
+              <button
+                onClick={() => toggleSection('breakdown')}
+                className="text-gray-400 hover:text-orange-400 transition-colors"
+              >
+                {expandedSections['breakdown'] ? '−' : '+'}
+              </button>
+            </div>
+            {expandedSections['breakdown'] && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {(['A1', 'B1', 'C1', 'D1', 'D2', 'E1', 'E2'] as const).map(cat => {
                 const info = getCategoryInfo(cat);
                 return (
@@ -427,12 +553,22 @@ export default function RoundChecker() {
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* Detailed Question Analysis */}
           <div className="bg-gray-900 p-6 rounded-lg border border-gray-700 mb-6">
-            <h2 className="text-2xl font-semibold mb-4 text-orange-400">Question Analysis</h2>
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-orange-400">Question Analysis</h2>
+              <button
+                onClick={() => toggleSection('questions')}
+                className="text-gray-400 hover:text-orange-400 transition-colors"
+              >
+                {expandedSections['questions'] ? '−' : '+'}
+              </button>
+            </div>
+            {expandedSections['questions'] && (
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto">
               {Array.from({ length: numQuestions }, (_, i) => i + 1).map(questionId => {
                 const category = classifyQuestion(questionId);
                 const info = getCategoryInfo(category);
@@ -461,12 +597,22 @@ export default function RoundChecker() {
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* Key Insights */}
           <div className="bg-gray-900 p-6 rounded-lg border border-gray-700 mb-6">
-            <h2 className="text-2xl font-semibold mb-4 text-orange-400">Key Insights</h2>
-            <ul className="space-y-2 text-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-semibold text-orange-400">Key Insights</h2>
+              <button
+                onClick={() => toggleSection('insights')}
+                className="text-gray-400 hover:text-orange-400 transition-colors"
+              >
+                {expandedSections['insights'] ? '−' : '+'}
+              </button>
+            </div>
+            {expandedSections['insights'] && (
+              <ul className="space-y-2 text-sm">
               {metrics.carelessnessIndex > 20 && (
                 <li className="text-red-400">⚠️ High carelessness in Round 1 — slow down and recheck answers</li>
               )}
@@ -485,7 +631,8 @@ export default function RoundChecker() {
               {metrics.carelessnessIndex <= 20 && metrics.contentGapIndex <= 15 && metrics.eliminationEfficiency >= 60 && metrics.logicRiskRatio <= 5 && metrics.strategyDisciplineScore >= 75 && (
                 <li className="text-green-400">✓ Excellent strategy — marks coming mainly from solid content and planning</li>
               )}
-            </ul>
+              </ul>
+            )}
           </div>
 
           <div className="mt-6 text-center">
@@ -504,7 +651,7 @@ export default function RoundChecker() {
   switch (currentStep) {
     case 'setup':
       return renderSetup();
-    case 'rounds':
+    case 'selectRounds':
       return renderRounds();
     case 'answers':
       return renderAnswers();
